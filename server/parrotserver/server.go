@@ -4,19 +4,28 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 
 	"go.uber.org/zap"
 )
 
+/* Global vars */
+var redisServer server /* Server global state */
+
+func GetServerInstance() server {
+	return redisServer
+}
+
 type server struct {
-	lg       *zap.Logger
+	logger   *zap.Logger
 	errChan  chan error
 	listener net.Listener
 	dict     map[string]string
 	dictLock sync.Mutex
+	//Cluster  *State
+	addr net.Addr
+	port uint16
 }
 
 func NewServer() *server {
@@ -29,7 +38,7 @@ func NewServer() *server {
 		return nil
 	}
 	s := &server{
-		lg:       logger,
+		logger:   logger,
 		listener: ln,
 		dict:     map[string]string{},
 		dictLock: sync.Mutex{},
@@ -49,34 +58,32 @@ func (s *server) ListenAndServe() {
 	}
 }
 
-func (s server) serveConn(conn net.Conn) {
-	s.lg.Info(fmt.Sprintf("TCP: new client(%s)", conn.RemoteAddr()))
+func (s *server) serveConn(conn net.Conn) {
+	s.logger.Info(fmt.Sprintf("TCP: new client(%s)", conn.RemoteAddr()))
 	s.processInlineBuffer(conn)
 }
 
 var separatorBytes = []byte(" ")
 
-func (s server) processInlineBuffer(conn net.Conn) {
+func (s *server) processInlineBuffer(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	for {
-		line, err := reader.ReadSlice('\n')
+
+		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			if err == io.EOF {
-				err = nil
-			} else {
-				err = fmt.Errorf("failed to read command - %s", err)
-			}
 			return
 		}
-
-		// trim the '\n'
-		line = line[:len(line)-1]
-		// optionally trim the '\r'
-		if len(line) > 0 && line[len(line)-1] == '\r' {
-			line = line[:len(line)-1]
+		length := len(line)
+		if length <= 2 || line[length-2] != '\r' {
+			// there are some empty lines within replication traffic, ignore this error
+			//protocolError(ch, "empty line")
+			continue
 		}
+		line = bytes.TrimSuffix(line, []byte{'\r', '\n'})
+		fmt.Println(string(line))
+
 		params := bytes.Split(line, separatorBytes)
-		s.lg.Info(fmt.Sprintf("params:%s", params))
+		s.logger.Info(fmt.Sprintf("params:%s", params))
 		switch {
 		case bytes.Equal(params[0], []byte("SET")):
 			key := string(params[1])

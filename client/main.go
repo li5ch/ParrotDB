@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 )
 
 var host string
@@ -33,17 +34,22 @@ func main() {
 	// 键入数据
 	inputReader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Printf("%s:%d>", host, port)
-		input, _ := inputReader.ReadString('\n')
-		input += "\r\n"
-		_, err = conn.Write([]byte(input))
+		fmt.Printf("%s:%d> ", host, port)
+		input, _ := inputReader.ReadString('\n') // 读取用户输入
+		inputInfo := strings.Trim(input, "\r\n")
+		if strings.ToUpper(inputInfo) == "Q" { // 如果输入q就退出
+			return
+		}
+
+		inputInfo += "\r\n"
+		_, err = conn.Write([]byte(inputInfo)) // 发送数据
 		if err != nil {
 			return
 		}
 		buf := [512]byte{}
 		n, err := conn.Read(buf[:])
 		if err != nil {
-			fmt.Println("conn.Read error : ", err)
+			fmt.Println("recv failed, err:", err)
 			return
 		}
 		fmt.Println(string(buf[:n]))

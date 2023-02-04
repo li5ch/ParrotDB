@@ -1,6 +1,6 @@
 module parrotDB
 
-go 1.18
+go 1.17
 
 require go.uber.org/zap v1.24.0
 
